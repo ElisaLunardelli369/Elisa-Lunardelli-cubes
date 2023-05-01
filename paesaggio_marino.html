@@ -1,0 +1,350 @@
+<html>
+
+	<head>
+
+		<title>Marine Landscape 2022</title>
+
+		<style>
+		
+		body {
+			font-family: Monospace;
+			background-color: #a8dbf0; 
+			margin: 0px;
+			overflow: hidden;
+		}
+		
+		canvas { 
+			width: 100%; 
+			height: 100%;
+		}
+	
+	</style>
+
+		<script src="lib/three.min.js"></script>
+		<script src="lib/stats.min.js"></script>
+		<script src="lib/Coordinates.js"></script>
+		<script src="lib/OrbitControls.js"></script>
+		
+	</head>
+
+	<body>
+		
+		<script>
+
+		// VARIABILI ----------------------------------------------------------------------------------------------------	
+		
+		var scene, camera, renderer, controls, stats;      
+		var heightMap = [];                                                       // array che conterrà i valori ricavati dalla heightmap                       
+
+		var waterMaterial = new THREE.MeshPhongMaterial( { color: 0x1e96fc} );    // materiale acqua 
+	    var grassMaterial1 = new THREE.MeshPhongMaterial( { color: 0x138a36 } );  // materiale erba (chiara)
+		var grassMaterial2 = new THREE.MeshPhongMaterial( { color: 0x285238 } );  // materiale erba (scuro)
+	    var sandMaterial = new THREE.MeshPhongMaterial( { color: 0xf1dd62 } );    // materiale sabbia
+
+		var boat =  new THREE.Group();                                            // oggetto nella scena barca
+
+		var pivotBoat = new THREE.Group();                                        // pivot per l'animazione della barca
+		
+		var sizeTerrain = 40;                                                     // dimensioni del terreno (40x40)
+
+		// FUNZIONE LETTURA HEIGHT MAP ----------------------------------------------------------------------------------------------
+
+		function getHeightData(c_img, c_scale){                       // 1° argomento: immagine, 2° argomento: valore di scala
+
+			if (c_scale == undefined) {c_scale=1;}                    // se la scala non è indicata di default è 1
+
+			var canvas = document.createElement( 'canvas' );          // creo elemento canvas
+		    canvas.width = c_img.width;                               // le dimensioni del canvas sono le stesse dell' immagine c_img
+		    canvas.height = c_img.height;
+
+		    var context = canvas.getContext( '2d' );                  // variabile per contenere le info del canvas appena creato
+ 
+		    var size = c_img.width * c_img.height;                    // array di grandezza pari a quella dell'immagine
+		    var data = new Float32Array( size );
+ 
+		    context.drawImage(c_img,0,0);                             // disegnamo l'immagine passata come argomento alla funzione sul canvas
+ 
+		    for ( var i = 0; i < size; i ++ ) {                       // ad ogni elemento dell'array data si assegna valore 0
+		        data[i] = 0
+		    }
+            
+		    var imgd = context.getImageData(0, 0, c_img.width, c_img.height); // estrapoliamo da context i dati relativi all'immagine
+		    var pix = imgd.data;
+			
+		    var j=0;                                    // contatore che permette di percorrere l'array data
+
+		    for (var i = 0; i<pix.length; i +=4) {      // percorro tutti i dati presenti in pix con un passo di lunghezza 4(4 valori = 1 pixel)
+		        var all = pix[i]+pix[i+1]+pix[i+2];     // sommo le componenti rgb di un pixel per ottenere un unico valore 
+		        data[j++] = Math.floor(c_scale*all/3);  // inserisco nell'array data il valore intero derivante dalla moltiplicazione del 
+				                                        // valore di scale per il valore medio del pixel                                          				
+		    }
+            
+			console.log(data);
+		    return data;
+	
+		} 
+
+        // FUNZIONE DISEGNA BARCA -----------------------------------------------------------------------------------------------------
+
+
+		function drawBoat(b_scale){                                                // 1° argomento: volore di scala 
+
+          var sections = 5;                                                        // numero di elementi che formano la base della barca                               
+
+	      var boatMaterial = new THREE.MeshPhongMaterial( { color: 0x7f5539} );    // materiale legno
+		  var boatGeometry = new THREE.BoxGeometry(0.5,0.5,5);                     // geometria della base della barca
+
+		  for (var i = 1; i<sections; i++) {                                       // realizzo 4 rettangoli derivati dalla stessa geometria.
+                                                                          
+			var boatSection = new THREE.Mesh(boatGeometry,boatMaterial);           // ad ogni passaggio scalo la geometria originale e la posiziono in modo
+			boatSection.scale.set(i,1,1);                                          // da formare la prima parte della barca
+			boatSection.position.set(0,i/2,0);
+
+			boat.add(boatSection);                                                 // inserisco le mesh appena create nel gruppo che rappresenta la barca completa.
+			                                                                       // gestire i singoli elementi attraverso un gruppo semplifica l'animazione
+		  }
+		  
+		  var boatTreeGeometry = new THREE.BoxGeometry(0.1,6,0.1);                 // creo la geometria e la mesh dell'albero della nave, dopodichè
+		  var boatTree = new THREE.Mesh(boatTreeGeometry,boatMaterial);            // lo posiziono e lo aggiungo al gruppo boat
+		  boatTree.position.set(0,sections,0);
+		  boat.add(boatTree);
+
+		  var sailGeometry = new THREE.BoxGeometry(4,4,0.2);                       // creo la geometria, il materiale e la mesh della vela
+		  var sailMaterial = new THREE.MeshPhongMaterial( { color: 0xf5f3f4 } );   // dopodichè la posiziono e la aggiungo al gruppo boat
+		  var sail = new THREE.Mesh(sailGeometry,sailMaterial);
+		  sail.position.set(0,boatTree.position.y,0);
+		  boat.add(boatTree,sail);
+
+		  boat.scale.set(b_scale,b_scale,b_scale);                                 // ora che la barca è completa applichiamo una scalatura per renderla
+		  boat.receiveShadow = true;                                               // della misura desiderata.  
+                                                                                   
+		  pivotBoat.add(boat);                                                     // Aggiungiamo l'intero gruppo ad un altro gruppo pivot per facilitare l'animazione
+		  scene.add(pivotBoat);                                                    // Aggiungiamo pivotBoat alla scena perchè il tutto possa essere renderizzato
+
+		}
+
+		 // FUNZIONE DISEGNA FARO --------------------------------------------------------------------------------------------------------
+
+		 function drawLightHouse(lh_x,lh_y,lh_z,lh_scale){   // 1°,2°,3° arg: posizione del faro, 4° arg: valore di scala 
+
+			var geometryHeight = 0.5;                        // altezza geometria
+			var geometryDepht = 2.5;                         // profondità geometria
+
+			var lightHouseW = new THREE.MeshPhongMaterial( { color: 0xf5f3f4 } );  // materiale bianco
+			var lightHouseR = new THREE.MeshPhongMaterial( { color: 0xba181b } );  // materiale rosso 
+
+			var lightHouseGeometry = new THREE.BoxGeometry(geometryDepht,geometryHeight,geometryDepht);  // geometria dei piani che compongono il faro
+
+			var baseLightHouse = new THREE.BoxGeometry(geometryDepht*2,geometryHeight,geometryDepht*2);  // geometria della base del faro
+			var baseLightHouseMesh = new THREE.Mesh(baseLightHouse,lightHouseW);                         // Mesh della base del faro
+			
+            var translation_floor = 0.5;                                                                 // ogni piano del faro si sposta in alto di questa misura
+
+			var lightHouse =  new THREE.Group();                                                         // gruppo per la gestione di tutti gli elementi del faro 
+			lightHouse.add(baseLightHouseMesh);                                                          // aggiungo la base del faro al gruppo
+
+			for (var i = 0; i<10; i++) {                                                                 // creo i 10 piani del faro
+
+			    lightHousePiece1 = new THREE.Mesh(lightHouseGeometry,lightHouseR);                       // creo mesh dei piani rossi
+				lightHousePiece2 = new THREE.Mesh(lightHouseGeometry,lightHouseW);                       // creo mesh dei piani bianchi
+
+				lightHousePiece1.position.set(0,translation_floor,0);                                    // posiziono ogni piano
+				lightHousePiece2.position.set(0,translation_floor+geometryHeight,0);
+
+				lightHouse.add(lightHousePiece1,lightHousePiece2);                                       // aggiungo i piani al gruppo faro
+			
+				translation_floor = translation_floor + 1; 	                                             // aumento il valore di spostamento del piano
+
+			}	
+
+			var balconyMaterial = new THREE.MeshPhongMaterial( { color: 0x6c757d } );                           // creo l'elemento balcone (grigio)
+			var balconyGeometry = new THREE.BoxGeometry(geometryDepht+0.5,geometryHeight/2,geometryDepht+0.5);
+			var balcony = new THREE.Mesh(balconyGeometry,balconyMaterial);
+			balcony.position.set(0,translation_floor-geometryHeight/2,0); 
+
+			var lightGeometry = new THREE.BoxGeometry(geometryDepht-1,geometryDepht-1,geometryDepht-1);         // creo l'elemento luce del faro (gialla)
+			var lightMaterial = new THREE.MeshPhongMaterial( { color: 0xffee32 } );  
+			var light = new THREE.Mesh(lightGeometry,lightMaterial);
+			light.position.set(0,balcony.position.y+(geometryDepht-1)/2,0);
+
+			var roof = new THREE.Mesh(lightHouseGeometry,lightHouseR);                                          // creo il tetto del faro
+			roof.position.set(0,light.position.y+(geometryDepht/3),0);
+
+			var roofTop = new THREE.Mesh(lightGeometry,lightHouseR);
+			roofTop.position.set(0,roof.position.y+((geometryDepht-1)/2),0);
+
+			lightHouse.add(balcony,light,roof,roofTop);                                           // aggingo al gruppo faro gli elementi appena creati
+
+			lightHouse.position.set(lh_x,lh_y,lh_z);                                              // sfruttando l'elemento gruppo per scalare e posizionare tutti gli elementi
+			lightHouse.scale.set(lh_scale,lh_scale,lh_scale);
+			lightHouse.receiveShadow = true; 
+			scene.add(lightHouse);
+          }
+
+		//FUNZIONE CHE DISEGNA IL TERRENO --------------------------------------------------------------------------------------------
+
+		function drawTerrain(c_heightMap, c_cubeSize) {   // 1° arg: array unidimensionale, 2° arg: numero
+
+			var material;
+			var terrainHeight;
+
+            // occorre posizionare degli elementi distribuiti in un array monodimensionale in una griglia bidimensionale che formerà
+			// il terreno della scena (la height map, prima bidimensionale,è ora un elenco di elementi r,b,g,a)
+					                                    
+			   for(var y=0;y<sizeTerrain;y++){           
+			     for(var x=0;x<sizeTerrain;x++){                                             
+				
+					var terrainExtrusion = c_heightMap[x+y*sizeTerrain];  
+
+					// switch per assegnare ad ogni valore della height map una determinata altezza e materiale 
+
+					switch (terrainExtrusion ){    
+					    case 3:
+						  material = waterMaterial;
+						  terrainHeight = terrainExtrusion;
+						  var terrainGeometry = new THREE.BoxGeometry(c_cubeSize,terrainHeight,c_cubeSize);                             
+						  
+						break;
+
+					    case 6:
+						  material = sandMaterial;
+						  terrainHeight = 4;
+						  var terrainGeometry = new THREE.BoxGeometry(c_cubeSize,terrainHeight,c_cubeSize);
+						                                   
+						break;
+
+					    case 9:
+						 material = grassMaterial1;
+						 terrainHeight = 5;
+						 var terrainGeometry = new THREE.BoxGeometry(c_cubeSize,terrainHeight,c_cubeSize);  
+
+						break;	
+						case 12:
+						 material = grassMaterial2;
+						 terrainHeight = 6;
+						 var terrainGeometry = new THREE.BoxGeometry(c_cubeSize,terrainHeight,c_cubeSize);                                
+						 
+						break;
+
+					 }                
+
+					var terrain = new THREE.Mesh(terrainGeometry,material);      // creo sezione del terreno
+					terrain.position.set(x,terrainHeight/2,y);                   // posiziono il cubo appena creato nella griglia che forma il terreno
+					terrain.receiveShadow = true;                                                    
+					scene.add(terrain);                                                               
+
+     
+				  }
+		        }
+		} 
+
+
+		
+
+		// FUNZIONE START -------------------------------------------------------------------------------------------------------
+
+		function Start() {
+
+			// contiene tutti i passaggi che vanno eseguiti una sola volta e che quindi non rientrano nel loop della animazione
+
+			scene = new THREE.Scene();                                  // scena
+			
+			renderer = new THREE.WebGLRenderer( {antialias: true} );    // renderer
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setClearColor( 0xa8dbf0  );                        // inserisco un colore di sfondo azzurrino per motivi estetici   
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.gammaInput = true;
+			renderer.gammaOutput = true;
+			renderer.shadowMap.enabled = true;
+			document.body.appendChild( renderer.domElement );
+			
+			camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 ); // camera
+			camera.position.set(0,15,70);
+			camera.lookAt( new THREE.Vector3(0,0,0));
+
+			// le luci utilizzate sono quelle fornite nella versione StartingCode-withLight del progetto
+
+			var hemiLight = new THREE.HemisphereLight( 0xffffff, 0xffffff, 0.6 );  // luci: HemisphereLight 
+			hemiLight.color.setHSL( 0.6, 1, 0.6 );
+			hemiLight.groundColor.setHSL( 0.095, 1, 0.75 );
+			hemiLight.position.set( 0, 500, 0 );
+			hemiLight.castShadow = true;
+			scene.add( hemiLight );
+
+			var dirLight = new THREE.DirectionalLight( 0xffffff, 1 );              // luci: DirectionalLight
+			dirLight.color.setHSL( 0.1, 1, 0.95 );
+			dirLight.position.set( -1, 1.75, 1 );
+			dirLight.position.multiplyScalar( 50 );
+			scene.add( dirLight );
+			dirLight.castShadow = true;
+			dirLight.shadow.mapSize.width = 1024;
+			dirLight.shadow.mapSize.height = 1024;
+			
+			stats = new Stats();                                                // pannello di controllo prestazioni
+			stats.domElement.style.position = 'absolute';
+			stats.domElement.style.top = '30px';
+			stats.domElement.style.left = '30px';
+			document.body.appendChild( stats.domElement );
+			
+			controls = new THREE.OrbitControls( camera, renderer.domElement );  // controllo camera
+			controls.addEventListener( 'change', Render );
+			
+			// IMPORTO HEIGHT MAP
+			var img = new Image();
+			img.onload = function (){                  // al caricamento dell'immagine eseguo:
+
+		    heightMap = getHeightData(img,0.1);        // 1) estraggo le informazioni della height map
+			drawTerrain(heightMap,1);                  // 2) disegno il terreno della scena
+
+			drawBoat(0.5);                             // 3) disegno l'elemento barca
+
+			drawLightHouse(18,6,9,0.45);               // 4) disegno elemento faro
+
+		    }
+
+			img.src = 'textures/terrain.png';          // carico immagine
+
+			
+		}
+
+		
+		
+		var speed = 0.1;     // velocità della barca
+		var step = 182.5;    // posizione in gradi della barca sul suo percorso (circonferenza)
+		pivotBoat.position.set(sizeTerrain,2.5,sizeTerrain); // posizioniamo il pivot in modo che la rotazione avvenga nel punto prestabilito
+		
+		function Update() {
+
+			// contiene tutti gli elementi necessari per creare il loop e animare la scena
+
+			var boatPositionX = (Math.sin(step*Math.PI/180))*sizeTerrain/2;  // calcolo le coordinate x e z della barca in un determinato punto
+		    var boatPositionZ = (Math.cos(step*Math.PI/180))*sizeTerrain/2;  // del suo percorso 
+
+			boat.position.set(boatPositionX,0,boatPositionZ);                // posiziono la barca 
+			boat.rotation.y = (90+step)*Math.PI/180;                         // facciamo ruotare leggermente la barca in modo che la sua punta segua il percorso
+
+			if (step > 267)                                                  // se la barca raggiunge il bordo del terreno la animazione riparte da capo
+			{step = 182.5;}
+
+			step+= speed;                                                    // faccio avanzare la barca in avanti
+			
+
+			requestAnimationFrame( Update );
+
+			controls.update();  
+			stats.update();
+
+			Render();
+		}
+		
+		function Render() {
+			
+			renderer.render(scene, camera);
+		}
+		
+		Start();
+		Update();
+			
+		</script>
+	</body>
+</html>
