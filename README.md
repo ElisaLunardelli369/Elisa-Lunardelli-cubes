@@ -1,5 +1,5 @@
 
-In order to see this project a local server is needed 
+If you wanna run this project you need a local server 
 
 # Paesaggio marino
 
