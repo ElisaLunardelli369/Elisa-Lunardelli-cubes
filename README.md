@@ -32,15 +32,6 @@ Le luci e i materiali sono stati scelti prendendo ad esempio il codice del file 
 - BACKGROUND: 
 Ho impostato il colore di sfondo della pagina uguale a quello presente nel canvas, in modo che all'avvio del progetto, in caso ci metta un attimo a caricare gli elementi, non si veda uno stacco, ma che risulti un semplice pop-up della scena dando un effetto più gradevole.
 
-
-## Prestazioni
-
-- Se si avvia il progetto e non si muove la camera il frame rate è molto alto tra i 60fps e 50fps
-- Durante una fruizione normale (controllare la camera con il mouse) il frame rate si aggira intorno ai 40fps
-- Se si prova a stressare l'applicazione muovendo molto velocemente la camera il frame rate cala ulteriormente e raggiunge i 30fps circa.
-
-Per questo progetto l'elemento che incide maggiormente sulle prestazioni è il terreno che è composto da 12800 singole geometrie. Molte di queste geometrie hanno dei vertici in comune e questo è poco conveniente dal punto di vista computazionale. Potrebbe aiutare il frame rate ripensare la creazione di queste geometrie. Solitamente per la realizzazione di terreni si parte da un unico piano che viene diviso poi in triangoli in base alle informazioni delle altezze. Essendo questa un'unica grande geometria si condividono i vertici e si crea una mesh finale più leggera. Trattandosi di una scena semplice e vedendo che il frame rate mantiene valori standard per una applicazione web non ho realizzato grandi ottimizzazioni in questo senso.
-
 ## Credits
 
 La heightMap terrain.png è stata realizzata utilizzando [Piskel](https://www.piskelapp.com/)
